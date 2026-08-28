@@ -101,5 +101,3 @@ new password and use `self.async_update_reload_and_abort(...)` to update the ent
 ## Explicitly not done (by design, not an oversight)
 
 - No GitHub Actions CI (hassfest/HACS validation workflows) exists yet.
-- `manifest.json`'s `documentation`/`issue_tracker`/`codeowners` URLs are placeholders pending repo/GitHub
-  identity confirmation from the owner.

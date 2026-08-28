@@ -14,7 +14,7 @@ implements the correct format directly.
 ### Via HACS (custom repository)
 
 1. In HACS, go to **Integrations → ⋮ → Custom repositories**.
-2. Add this repository's URL, category **Integration**.
+2. Add `https://github.com/silviog1990/ezviz-hp5-homeassistant-integration`, category **Integration**.
 3. Install "EZVIZ HP5 Gate Controller" from HACS.
 4. Restart Home Assistant.
 

@@ -15,7 +15,7 @@ Questa integrazione implementa direttamente il formato corretto.
 ### Tramite HACS (repository personalizzata)
 
 1. In HACS, vai su **Integrazioni → ⋮ → Repository personalizzate**.
-2. Aggiungi l'URL di questo repository, categoria **Integrazione**.
+2. Aggiungi `https://github.com/silviog1990/ezviz-hp5-homeassistant-integration`, categoria **Integrazione**.
 3. Installa "EZVIZ HP5 Gate Controller" da HACS.
 4. Riavvia Home Assistant.
 

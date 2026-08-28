@@ -1,0 +1,31 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "EZVIZ HP5 Gate Controller",
+        "description": "Enter your EZVIZ account credentials and the intercom's serial number.\n\nTo find the serial number: open the EZVIZ app, select your HP5 device, tap the settings gear icon, then \"Device Info\" — the serial number is listed there. It is also printed on the physical label/QR code on the back of the device.",
+        "data": {
+          "account": "EZVIZ account (email)",
+          "password": "EZVIZ password",
+          "serial": "Device serial number",
+          "api_url": "API URL (advanced, leave default unless instructed otherwise)"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reauthenticate EZVIZ HP5 Gate Controller",
+        "description": "Your EZVIZ password is no longer valid. Enter the new password to continue.",
+        "data": {
+          "password": "EZVIZ password"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid EZVIZ credentials.",
+      "unknown": "Unexpected error occurred."
+    },
+    "abort": {
+      "already_configured": "This device is already configured.",
+      "reauth_successful": "Re-authentication was successful."
+    }
+  }
+}

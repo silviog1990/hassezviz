@@ -1,0 +1,31 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "EZVIZ HP5 Gate Controller",
+        "description": "Inserisci le credenziali del tuo account EZVIZ e il numero di serie del citofono.\n\nPer trovare il numero di serie: apri l'app EZVIZ, seleziona il tuo dispositivo HP5, tocca l'icona delle impostazioni (ingranaggio), poi \"Informazioni dispositivo\" — il numero di serie è indicato lì. È anche stampato sull'etichetta fisica/QR code sul retro del dispositivo.",
+        "data": {
+          "account": "Account EZVIZ (email)",
+          "password": "Password EZVIZ",
+          "serial": "Numero di serie del dispositivo",
+          "api_url": "URL API (avanzato, lascia il valore predefinito salvo indicazioni diverse)"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reimposta le credenziali EZVIZ HP5 Gate Controller",
+        "description": "La password EZVIZ non è più valida. Inserisci la nuova password per continuare.",
+        "data": {
+          "password": "Password EZVIZ"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Credenziali EZVIZ non valide.",
+      "unknown": "Si è verificato un errore imprevisto."
+    },
+    "abort": {
+      "already_configured": "Questo dispositivo è già configurato.",
+      "reauth_successful": "La reimpostazione delle credenziali è avvenuta con successo."
+    }
+  }
+}

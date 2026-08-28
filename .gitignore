@@ -1,0 +1,17 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+venv/
+.opencode
+.ruff_cache
+.DS_Store
+**/.DS_Store
+*.json
+!docker-compose.yml
+appunti.txt
+debug_*.py
+.env.build
+.docker_version
+docs/*
+!docs/superpowers/

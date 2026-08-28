@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 
 from .client import EzvizHp5Client
 from .const import CONF_API_URL, CONF_SERIAL, DOMAIN
 
-PLATFORMS = ["lock"]
+PLATFORMS = [Platform.LOCK]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

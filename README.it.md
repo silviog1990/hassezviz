@@ -48,5 +48,5 @@ credenziali tramite una notifica di riparazione.
 
 ## Sicurezza
 
-Le credenziali sono salvate nello storage cifrato delle config entry di
-Home Assistant. Nessuna credenziale viene mai loggata.
+Le credenziali sono salvate nello storage delle config entry di Home
+Assistant (`.storage`), mai in YAML e mai loggate.

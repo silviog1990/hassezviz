@@ -45,5 +45,5 @@ re-authenticate via a repair notification.
 
 ## Security
 
-Credentials are stored in Home Assistant's encrypted config entry storage.
-No credentials are logged.
+Credentials are stored in Home Assistant's config entry storage (`.storage`),
+never in YAML and never logged.

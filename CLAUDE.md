@@ -4,61 +4,102 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A small FastAPI microservice that unlocks the gate/door relay on an EZVIZ HP5 video intercom via the EZVIZ cloud API. Intended to be called by Home Assistant's `rest_command` integration (or any HTTP client) since the official HA EZVIZ integration doesn't expose lock/unlock entities.
+A Home Assistant custom integration (`custom_components/ezviz_hp5/`) that unlocks the gate/door relay on an
+EZVIZ HP5 video intercom via the EZVIZ cloud API, exposed as native `lock` entities. Installable via HACS
+(custom repository) or by copying the folder into a Home Assistant `custom_components` directory.
+
+This replaces an earlier standalone FastAPI microservice (deleted from this repo) that HA would call via
+`rest_command`, since the official HA EZVIZ integration doesn't expose lock/unlock entities for the HP5.
+The integration now does the same job natively, with a config flow for setup/reauth instead of a `.env` file.
 
 ## Commands
 
 ```bash
-# Local run (requires a filled-in .env, see .env.example)
-pip install -r requirements.txt
-python app.py
-
-# Docker
-./docker_build.sh    # cross-builds linux/amd64 image, tags amd64-<git-sha> and amd64-latest; reads REGISTRY from .env.build
-./docker_push.sh     # pushes both tags to ${REGISTRY}
-./docker_run.sh      # pulls amd64-latest from ${REGISTRY} and runs it, reading credentials from .env
-docker compose up -d # alternative: build+run locally, reads .env automatically
+# Tests (Python 3.14, the interpreter used for day-to-day dev in this repo, does not yet
+# support homeassistant's pinned dependencies, hence a separate Python 3.13 test venv)
+.venv-test/bin/pytest tests/ -v
 ```
 
-There is no test suite, linter, or CI config in this repo.
+There is no linter or CI config in this repo (see "Explicitly not done" note below if one is ever added).
 
 ## Architecture
 
-Three files carry all the logic:
-
-- **`config.py`** — loads required (`EZVIZ_ACCOUNT`, `EZVIZ_PASSWORD`, `EZVIZ_SERIAL`) and optional (`EZVIZ_API_URL`, `API_HOST`, `API_PORT`) env vars via `python-dotenv`. Missing required vars cause an immediate `sys.exit(1)`, not an exception — keep that behavior if refactoring.
-- **`ezviz_service.py`** — `EzvizGateService` holds the EZVIZ session and does the unlock call. This is the core of the project.
-- **`app.py`** — FastAPI app wiring: `lifespan` logs in on startup (best-effort — failure just logs, since `_execute_with_retry` re-authenticates on demand) and closes the session on shutdown; endpoints translate `RuntimeError` → HTTP 401, anything else → HTTP 500.
+- **`const.py`** — `DOMAIN`, config-entry data keys (`CONF_SERIAL`, `CONF_API_URL`), `DEFAULT_API_URL`,
+  lock numbers (`LOCK_NO_GATE` / `LOCK_NO_DOOR`), and `UNLOCK_RESET_DELAY` (seconds before a `lock` entity
+  reverts from "unlocked" back to "locked" after an impulse-unlock command).
+- **`client.py`** — `EzvizHp5Client` holds the EZVIZ session (`login()`/`close()`) and exposes `gate_unlock()`
+  / `door_unlock()`. This is the core of the integration; see "Why the unlock call bypasses `pyezvizapi`" below.
+- **`config_flow.py`** — `EzvizHp5ConfigFlow`: a `user` step that validates credentials with a real EZVIZ
+  login before creating the entry (aborting with `already_configured` if the serial's unique ID already
+  exists), and a `reauth`/`reauth_confirm` step pair for credential rotation.
+- **`__init__.py`** — `async_setup_entry` builds one `EzvizHp5Client` per config entry, stores it in
+  `hass.data[DOMAIN][entry.entry_id]`, and forwards setup to `PLATFORMS = [Platform.LOCK]`.
+  `async_unload_entry` unloads the platform and closes the client's session.
+- **`lock.py`** — `EzvizHp5Lock(LockEntity)`, two per config entry (gate, door). `async_unlock` runs the
+  client's blocking unlock call in the executor, then schedules a callback via `async_call_later` to flip
+  the entity back to "locked" after `UNLOCK_RESET_DELAY` — this is what models the physical impulse relay
+  (there is no persistent "unlocked" state to poll). `async_lock` is a local no-op: it flips the entity state
+  back to "locked" without sending any command to EZVIZ.
+- **`manifest.json` / `strings.json` / `translations/{en,it}.json` / `hacs.json`** — HACS/HA integration
+  metadata and the user-facing strings for the config flow steps and error messages, in English and Italian.
 
 ### Why the unlock call bypasses `pyezvizapi`
 
-`pyezvizapi`'s `remote_unlock()` targets the HP7/HPD7 family and its request format doesn't work on the HP5. The correct HP5 format was reverse-engineered from the official EZVIZ app's traffic (via mitmproxy) and differs in three ways, all implemented directly in `ezviz_service.py._unlock_sync`:
+`pyezvizapi`'s `remote_unlock()` targets the HP7/HPD7 family and its request format doesn't work on the HP5.
+The correct HP5 format was reverse-engineered from the official EZVIZ app's traffic (via mitmproxy) and
+differs in three ways, all implemented directly in `client.py`'s `_unlock`:
 
 - URL resource identifier is the literal string `"Video"`, not a UUID
 - request body is wrapped in `{"value": {...}}`
-- a `featureCode` header (MD5 hash of the calling machine's MAC address, computed once at import time as `FEATURE_CODE`) must be present
+- a `featureCode` header (MD5 hash of the calling machine's MAC address, computed once at import time as
+  `FEATURE_CODE` from `uuid.getnode()`) must be present — note this means `FEATURE_CODE` changes if the HA
+  host/container is ever recreated with a different MAC, which is worth remembering if EZVIZ ever starts
+  rejecting `bindCode` after an environment change
 
-`pyezvizapi` is still used, but only for `EzvizClient.login()` / session management — the actual unlock PUT request is built and sent by hand with `requests`.
+`pyezvizapi` is still used, but only for `EzvizClient.login()` / session management — the actual unlock PUT
+request is built and sent by hand with `requests`.
 
 `lockNo=1` is the gate, `lockNo=2` is the door (`LOCK_NO_GATE` / `LOCK_NO_DOOR` constants).
 
-### Session/auth flow
+### Lock (close) command is intentionally never called
 
-1. On startup, `lifespan` calls `service.login()` once (failure is logged, not fatal — the service will retry lazily).
-2. `EzvizGateService` keeps `_session_id`/`_user_id`/`_authenticated` in memory for the process lifetime; there's no persistence across restarts.
-3. Every gate/door call goes through `_execute_with_retry`: if not authenticated, logs in first; if the sync call raises, it closes the session, re-logs in, and retries **once** before giving up.
-4. `/health` reports `service.authenticated` so callers (e.g. HA) can surface auth failures.
+A `_lock` method exists in `client.py` as commented-out reference code (request format verified against app
+traffic) but is never wired up to a `gate_lock`/`door_lock` method or exposed anywhere. The `lock.py` entity's
+"lock" action is purely local UI state, never an EZVIZ API call — see `LockEntity.async_lock` above. If ever
+re-enabling a real lock/close command, uncomment `_lock` and add the corresponding public method deliberately;
+don't delete the commented block, it's kept in sync as reference.
 
-### Lock endpoints are intentionally disabled
+### Session/auth design — no coordinator, no polling
 
-`/gate/lock` and `/door/lock` (and their `_lock_sync`/`gate_lock`/`door_lock` implementations) exist but are commented out in both `app.py` and `ezviz_service.py`. If re-enabling them, uncomment both the route and the corresponding service method/import together — they're kept in sync as commented pairs, not deleted, because the request format was already verified against app traffic.
+This integration has no `DataUpdateCoordinator` and does not poll the device. Each `EzvizHp5Client` keeps
+`_session_id`/`_user_id`/`_authenticated` in memory for as long as the config entry is loaded; there's no
+persistence across HA restarts. Every gate/door call goes through `_execute_with_retry`: if not authenticated,
+it logs in first; if the sync call raises, it closes the session, re-logs in, and retries **once** before
+giving up. `iot_class` in `manifest.json` is `assumed_state` (matching `_attr_assumed_state = True` on the
+lock entities) because there's no way to read back the physical lock state from EZVIZ.
 
-### Docker build/tag scheme
+### Reauth flow
 
-`docker_build.sh` always cross-builds for `linux/amd64` (development happens on Apple Silicon, deploy target is an amd64 Linux host). Each build produces an immutable `amd64-<git-short-sha>` tag (or a timestamp if there's no git history) plus a moving `amd64-latest` tag, so a specific build can be pinned on the deploy host via `TAG=amd64-<version> ./docker_run.sh`.
+If a command fails due to invalid credentials, `EzvizAuthError` is raised inside `lock.py`'s `async_unlock`.
+Raising `ConfigEntryAuthFailed` alone does **not** trigger HA's reauth repair flow when it originates from an
+entity service call (only `ConfigEntry.async_setup`/a coordinator does that automatically) — so `async_unlock`
+explicitly calls `self.platform.config_entry.async_start_reauth(self.hass)` before raising
+`ConfigEntryAuthFailed`. The config flow's `async_step_reauth`/`async_step_reauth_confirm` then re-validate a
+new password and use `self.async_update_reload_and_abort(...)` to update the entry and reload it.
 
 ## Security notes specific to this project
 
-- The service has no authentication of its own — it must only ever be exposed on the local network, never on the internet.
-- `.env`, `.env.build`, all `*.json` (session token, device list), and `appunti.txt` are gitignored because they can contain live credentials/tokens — never force-add or commit these.
-- Credentials are read from env vars only and must never be logged.
+- The integration has no authentication of its own beyond what HA's config entry system provides — it should
+  only ever talk to the EZVIZ cloud API over HTTPS; there's no local network exposure to worry about since
+  there's no standalone server anymore.
+- Credentials are stored in Home Assistant's config entry storage (`.storage/core.config_entries`), never in
+  YAML, and must never be logged. Note `.storage` is plaintext JSON on disk (not encrypted at rest) — that's
+  an HA platform property, not something this integration controls.
+- `.venv-test/`, `venv/`, and other virtualenvs are gitignored (`.venv*/`, `venv/` in `.gitignore`) — never
+  force-add them.
+
+## Explicitly not done (by design, not an oversight)
+
+- No GitHub Actions CI (hassfest/HACS validation workflows) exists yet.
+- `manifest.json`'s `documentation`/`issue_tracker`/`codeowners` URLs are placeholders pending repo/GitHub
+  identity confirmation from the owner.

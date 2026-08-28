@@ -21,6 +21,10 @@ from .const import LOCK_NO_DOOR, LOCK_NO_GATE
 
 _LOGGER = logging.getLogger(__name__)
 
+# Derived from uuid.getnode() (the host's MAC address). If the Home Assistant
+# host/container is ever recreated with a different MAC, this value changes —
+# worth knowing if EZVIZ ever starts rejecting bindCode after an environment
+# change.
 _mac_int = uuid.getnode()
 _mac_str = ":".join(f"{(_mac_int >> i) & 0xFF:02x}" for i in range(40, -1, -8))
 FEATURE_CODE = hashlib.md5(_mac_str.encode("utf-8")).hexdigest()
@@ -53,7 +57,7 @@ class EzvizHp5Client:
 
     def login(self) -> None:
         """Authenticate with EZVIZ cloud. Raises EzvizAuthError on failure."""
-        _LOGGER.info("Authenticating with EZVIZ cloud as %s", self._account)
+        _LOGGER.debug("Authenticating with EZVIZ cloud as %s", self._account)
         try:
             self._client = EzvizClient(
                 account=self._account,
@@ -61,15 +65,16 @@ class EzvizHp5Client:
                 url=self._api_url,
             )
             self._client.login()
+
+            token = self._client._token
+            self._session_id = token.get("session_id")
+            self._user_id = str(token.get("username", ""))
+            self._authenticated = True
         except Exception as err:
             self._authenticated = False
             raise EzvizAuthError(str(err)) from err
 
-        token = self._client._token
-        self._session_id = token.get("session_id")
-        self._user_id = str(token.get("username", ""))
-        self._authenticated = True
-        _LOGGER.info(
+        _LOGGER.debug(
             "EZVIZ auth OK for serial %s (user: %s)", self._serial, self._user_id
         )
 
@@ -114,18 +119,18 @@ class EzvizHp5Client:
             "featureCode": FEATURE_CODE,
         }
 
-        _LOGGER.info("Sending unlock request: serial=%s lockNo=%d", self._serial, lock_no)
+        _LOGGER.debug("Sending unlock request: serial=%s lockNo=%d", self._serial, lock_no)
         resp = requests.put(url, json=payload, headers=headers, timeout=15)
         body = resp.json()
         meta_code = body.get("meta", {}).get("code")
         meta_msg = body.get("meta", {}).get("message", "")
 
         if meta_code == 200:
-            _LOGGER.info("Unlock OK: lockNo=%d meta=%s", lock_no, meta_msg)
+            _LOGGER.debug("Unlock OK: lockNo=%d meta=%s", lock_no, meta_msg)
             return True
 
         _LOGGER.warning(
-            "Unlock failed: lockNo=%d meta=%d %s", lock_no, meta_code, meta_msg
+            "Unlock failed: lockNo=%d meta=%s %s", lock_no, meta_code, meta_msg
         )
         raise EzvizCommandError(f"EZVIZ API error: code={meta_code} message={meta_msg}")
 

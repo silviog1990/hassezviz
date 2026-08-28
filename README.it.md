@@ -14,6 +14,10 @@ Questa integrazione implementa direttamente il formato corretto.
 
 ### Tramite HACS (repository personalizzata)
 
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=silviog1990&repository=ezviz-hp5-homeassistant-integration&category=integration)
+
+Clicca sul badge sopra per aggiungere questo repository a HACS sulla tua istanza, oppure fallo manualmente:
+
 1. In HACS, vai su **Integrazioni → ⋮ → Repository personalizzate**.
 2. Aggiungi `https://github.com/silviog1990/ezviz-hp5-homeassistant-integration`, categoria **Integrazione**.
 3. Installa "EZVIZ HP5 Gate Controller" da HACS.

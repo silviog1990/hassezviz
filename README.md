@@ -13,6 +13,10 @@ implements the correct format directly.
 
 ### Via HACS (custom repository)
 
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=silviog1990&repository=ezviz-hp5-homeassistant-integration&category=integration)
+
+Click the badge above to add this repository to HACS on your own instance, or do it manually:
+
 1. In HACS, go to **Integrations → ⋮ → Custom repositories**.
 2. Add `https://github.com/silviog1990/ezviz-hp5-homeassistant-integration`, category **Integration**.
 3. Install "EZVIZ HP5 Gate Controller" from HACS.

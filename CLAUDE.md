@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+> Project renamed to **hassezviz** (formerly "EZVIZ HP5 Gate Controller" / repo `ezviz-hp5-homeassistant-integration`). The integration domain and folder stay `ezviz_hp5` on purpose, to keep existing config entries working.
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## What this is
@@ -15,7 +17,8 @@ The integration now does the same job natively, with a config flow for setup/rea
 ## Commands
 
 ```bash
-# Tests (Python 3.14, the interpreter used for day-to-day dev in this repo, does not yet
+# Tests (create the venv with: uv venv --python 3.13 .venv-test && uv pip install -p .venv-test/bin/python -r requirements_test.txt)
+# (Python 3.14, the interpreter used for day-to-day dev in this repo, does not yet
 # support homeassistant's pinned dependencies, hence a separate Python 3.13 test venv)
 .venv-test/bin/pytest tests/ -v
 ```
@@ -86,6 +89,20 @@ entity service call (only `ConfigEntry.async_setup`/a coordinator does that auto
 explicitly calls `self.platform.config_entry.async_start_reauth(self.hass)` before raising
 `ConfigEntryAuthFailed`. The config flow's `async_step_reauth`/`async_step_reauth_confirm` then re-validate a
 new password and use `self.async_update_reload_and_abort(...)` to update the entry and reload it.
+
+## PTZ camera support (CB8 Lite) — preset buttons
+
+Config entries have a `device_type` (`hp5` default, or `ptz_camera`; entries without it are HP5, no migration).
+`__init__.py` (`create_client`, `platforms_for`) picks the client and platform per type: HP5 -> `EzvizHp5Client` +
+`lock`; PTZ camera -> `EzvizCameraClient` + `button`. `client.py` has a shared `EzvizBaseClient` (session, retry,
+a lock serializing calls so parallel presses can't race on re-login). `EzvizCameraClient` uses the app's legacy
+form-encoded endpoints `POST /api/device/preset/list` and `/api/device/preset/config` (`configPreset=GOTO_PRESET`),
+success = `resultCode "0"`. Presets are read once at setup (auth failure -> `ConfigEntryAuthFailed`, other
+failure -> `ConfigEntryNotReady`) and kept in `hass.data[DOMAIN][entry_id] = {"client", "presets"}`.
+`button.py` makes one button per preset plus "Refresh presets" (reloads the entry; stale preset entities are
+removed from the registry). No polling. Only channel 1; verified on CB8 Lite only; patrols are user automations.
+The form-field set sent by `_post_form` mirrors the app capture and is not yet verified as minimal (see
+`specs/001-camera-preset-patrol/research.md` R1/R5). Governance: `.specify/memory/constitution.md`.
 
 ## Security notes specific to this project
 

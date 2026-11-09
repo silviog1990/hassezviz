@@ -1,4 +1,4 @@
-"""Config flow for EZVIZ HP5 Gate Controller."""
+"""Config flow for hassezviz."""
 
 from __future__ import annotations
 
@@ -10,8 +10,19 @@ from homeassistant import config_entries
 from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.core import HomeAssistant
 
-from .client import EzvizAuthError, EzvizHp5Client
-from .const import CONF_API_URL, CONF_SERIAL, DEFAULT_API_URL, DOMAIN
+from homeassistant.helpers import selector
+
+from .client import EzvizAuthError, EzvizCameraClient, EzvizHp5Client
+from .const import (
+    CONF_API_URL,
+    CONF_DEVICE_TYPE,
+    CONF_SERIAL,
+    DEFAULT_API_URL,
+    DEFAULT_DEVICE_TYPE,
+    DEVICE_TYPE_HP5,
+    DEVICE_TYPE_PTZ_CAMERA,
+    DOMAIN,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -20,6 +31,13 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
         vol.Required("account"): str,
         vol.Required("password"): str,
         vol.Required(CONF_SERIAL): str,
+        vol.Required(CONF_DEVICE_TYPE, default=DEVICE_TYPE_HP5): selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                options=[DEVICE_TYPE_HP5, DEVICE_TYPE_PTZ_CAMERA],
+                translation_key=CONF_DEVICE_TYPE,
+                mode=selector.SelectSelectorMode.DROPDOWN,
+            )
+        ),
         vol.Optional(CONF_API_URL, default=DEFAULT_API_URL): str,
     }
 )
@@ -27,7 +45,12 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
 
 async def _validate_login(hass: HomeAssistant, data: dict[str, Any]) -> None:
     """Attempt a real EZVIZ login; raises EzvizAuthError on failure."""
-    client = EzvizHp5Client(
+    client_cls = (
+        EzvizCameraClient
+        if data.get(CONF_DEVICE_TYPE, DEFAULT_DEVICE_TYPE) == DEVICE_TYPE_PTZ_CAMERA
+        else EzvizHp5Client
+    )
+    client = client_cls(
         account=data["account"],
         password=data["password"],
         serial=data[CONF_SERIAL],
@@ -38,7 +61,7 @@ async def _validate_login(hass: HomeAssistant, data: dict[str, Any]) -> None:
 
 
 class EzvizHp5ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for EZVIZ HP5 Gate Controller."""
+    """Handle a config flow for hassezviz."""
 
     VERSION = 1
 
@@ -59,8 +82,13 @@ class EzvizHp5ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unexpected error validating EZVIZ credentials")
                 errors["base"] = "unknown"
             else:
+                model = (
+                    "PTZ Camera"
+                    if user_input[CONF_DEVICE_TYPE] == DEVICE_TYPE_PTZ_CAMERA
+                    else "HP5"
+                )
                 return self.async_create_entry(
-                    title=f"EZVIZ HP5 ({user_input[CONF_SERIAL]})",
+                    title=f"EZVIZ {model} ({user_input[CONF_SERIAL]})",
                     data=user_input,
                 )
 

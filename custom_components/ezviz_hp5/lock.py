@@ -1,4 +1,4 @@
-"""Lock platform for EZVIZ HP5 Gate Controller."""
+"""Lock platform for hassezviz (EZVIZ HP5 gate/door)."""
 
 from __future__ import annotations
 

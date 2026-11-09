@@ -31,7 +31,7 @@ async def test_user_flow_success(hass: HomeAssistant) -> None:
 
     assert result["type"] == "create_entry"
     assert result["title"] == "EZVIZ HP5 (ABC123)"
-    assert result["data"] == USER_INPUT
+    assert result["data"] == {**USER_INPUT, "device_type": "hp5"}
 
 
 async def test_user_flow_invalid_auth(hass: HomeAssistant) -> None:
@@ -74,4 +74,51 @@ async def test_reauth_flow_success(hass: HomeAssistant) -> None:
 
     assert result["type"] == "abort"
     assert result["reason"] == "reauth_successful"
+    assert entry.data["password"] == "new-secret"
+
+
+async def test_user_flow_ptz_camera(hass: HomeAssistant) -> None:
+    data = {**USER_INPUT, "device_type": "ptz_camera"}
+    with (
+        patch("custom_components.ezviz_hp5.config_flow.EzvizCameraClient.login"),
+        patch("custom_components.ezviz_hp5.config_flow.EzvizCameraClient.close"),
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], data
+        )
+
+    assert result["type"] == "create_entry"
+    assert result["title"] == "EZVIZ PTZ Camera (ABC123)"
+    assert result["data"]["device_type"] == "ptz_camera"
+
+
+async def test_reauth_preserves_device_type(hass: HomeAssistant) -> None:
+    data = {**USER_INPUT, "device_type": "ptz_camera"}
+    entry = MockConfigEntry(domain=DOMAIN, data=data, unique_id="ABC123")
+    entry.add_to_hass(hass)
+
+    with (
+        patch("custom_components.ezviz_hp5.config_flow.EzvizCameraClient.login") as login,
+        patch("custom_components.ezviz_hp5.config_flow.EzvizCameraClient.close"),
+        patch("custom_components.ezviz_hp5.async_setup_entry", return_value=True),
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={
+                "source": config_entries.SOURCE_REAUTH,
+                "entry_id": entry.entry_id,
+            },
+            data=entry.data,
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"password": "new-secret"}
+        )
+        await hass.async_block_till_done()
+
+    login.assert_called_once()
+    assert result["reason"] == "reauth_successful"
+    assert entry.data["device_type"] == "ptz_camera"
     assert entry.data["password"] == "new-secret"

@@ -2,17 +2,18 @@
   "config": {
     "step": {
       "user": {
-        "title": "EZVIZ HP5 Gate Controller",
-        "description": "Enter your EZVIZ account credentials and the intercom's serial number.\n\nTo find the serial number: open the EZVIZ app, select your HP5 device, tap the settings gear icon, then \"Device Info\" — the serial number is listed there. It is also printed on the physical label/QR code on the back of the device.",
+        "title": "hassezviz",
+        "description": "Enter your EZVIZ account credentials, the device serial number and the device type (HP5 intercom or PTZ camera such as the CB8 Lite).\n\nTo find the serial number: open the EZVIZ app, select your device, tap the settings gear icon, then \"Device Info\" — the serial number is listed there. It is also printed on the physical label/QR code on the device.",
         "data": {
           "account": "EZVIZ account (email)",
           "password": "EZVIZ password",
           "serial": "Device serial number",
+          "device_type": "Device type",
           "api_url": "API URL (advanced, leave default unless instructed otherwise)"
         }
       },
       "reauth_confirm": {
-        "title": "Reauthenticate EZVIZ HP5 Gate Controller",
+        "title": "Reauthenticate hassezviz",
         "description": "Your EZVIZ password is no longer valid. Enter the new password to continue.",
         "data": {
           "password": "EZVIZ password"
@@ -26,6 +27,14 @@
     "abort": {
       "already_configured": "This device is already configured.",
       "reauth_successful": "Re-authentication was successful."
+    }
+  },
+  "selector": {
+    "device_type": {
+      "options": {
+        "hp5": "HP5 video intercom",
+        "ptz_camera": "PTZ camera (e.g. CB8 Lite)"
+      }
     }
   }
 }

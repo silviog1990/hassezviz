@@ -123,3 +123,72 @@ async def test_duplicate_serial_aborts_already_configured(hass: HomeAssistant) -
 
     assert result["type"] == "abort"
     assert result["reason"] == "already_configured"
+
+
+async def test_legacy_entry_without_device_type_is_hp5(hass: HomeAssistant) -> None:
+    entry = _make_entry()  # no device_type key
+    entry.add_to_hass(hass)
+    with (
+        patch("custom_components.ezviz_hp5.client.EzvizHp5Client.login"),
+        patch("custom_components.ezviz_hp5.client.EzvizHp5Client.close"),
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+    assert len(hass.states.async_entity_ids("lock")) == 2
+    assert hass.states.async_entity_ids("button") == []
+
+
+async def test_hp5_and_ptz_camera_coexist(hass: HomeAssistant) -> None:
+    from custom_components.ezviz_hp5.client import Preset
+
+    hp5 = _make_entry()
+    cam = _make_entry(serial="CAM123", device_type="ptz_camera")
+    hp5.add_to_hass(hass)
+    cam.add_to_hass(hass)
+    with (
+        patch("custom_components.ezviz_hp5.client.EzvizHp5Client.login"),
+        patch("custom_components.ezviz_hp5.client.EzvizHp5Client.close"),
+        patch("custom_components.ezviz_hp5.client.EzvizCameraClient.login"),
+        patch("custom_components.ezviz_hp5.client.EzvizCameraClient.close"),
+        patch(
+            "custom_components.ezviz_hp5.client.EzvizCameraClient.list_presets",
+            return_value=[Preset(1, "Entrance")],
+        ),
+    ):
+        # Setting up the domain loads every entry of that domain.
+        assert await hass.config_entries.async_setup(hp5.entry_id)
+        await hass.async_block_till_done()
+        assert len(hass.states.async_entity_ids("lock")) == 2
+        assert len(hass.states.async_entity_ids("button")) == 2  # preset + refresh
+        assert await hass.config_entries.async_unload(cam.entry_id)
+        assert await hass.config_entries.async_unload(hp5.entry_id)
+
+
+async def test_ptz_setup_auth_failure_triggers_reauth(hass: HomeAssistant) -> None:
+    cam = _make_entry(serial="CAM123", device_type="ptz_camera")
+    cam.add_to_hass(hass)
+    with (
+        patch("custom_components.ezviz_hp5.client.EzvizCameraClient.close"),
+        patch(
+            "custom_components.ezviz_hp5.client.EzvizCameraClient.list_presets",
+            side_effect=EzvizAuthError("bad"),
+        ),
+    ):
+        assert not await hass.config_entries.async_setup(cam.entry_id)
+    assert cam.state is config_entries.ConfigEntryState.SETUP_ERROR
+
+
+async def test_ptz_setup_command_failure_retries_later(hass: HomeAssistant) -> None:
+    from custom_components.ezviz_hp5.client import EzvizCommandError
+
+    cam = _make_entry(serial="CAM123", device_type="ptz_camera")
+    cam.add_to_hass(hass)
+    with (
+        patch("custom_components.ezviz_hp5.client.EzvizCameraClient.close"),
+        patch(
+            "custom_components.ezviz_hp5.client.EzvizCameraClient.list_presets",
+            side_effect=EzvizCommandError("down"),
+        ),
+    ):
+        assert not await hass.config_entries.async_setup(cam.entry_id)
+    assert cam.state is config_entries.ConfigEntryState.SETUP_RETRY

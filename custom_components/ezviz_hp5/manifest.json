@@ -1,12 +1,17 @@
 {
   "domain": "ezviz_hp5",
-  "name": "EZVIZ HP5 Gate Controller",
-  "codeowners": ["@silviog1990"],
+  "name": "hassezviz",
+  "codeowners": [
+    "@silviog1990"
+  ],
   "config_flow": true,
-  "documentation": "https://github.com/silviog1990/ezviz-hp5-homeassistant-integration",
+  "documentation": "https://github.com/silviog1990/hassezviz",
   "integration_type": "hub",
   "iot_class": "assumed_state",
-  "issue_tracker": "https://github.com/silviog1990/ezviz-hp5-homeassistant-integration/issues",
-  "requirements": ["pyezvizapi>=1.0.4", "requests>=2.31.0"],
-  "version": "0.1.0"
+  "issue_tracker": "https://github.com/silviog1990/hassezviz/issues",
+  "requirements": [
+    "pyezvizapi>=1.0.4",
+    "requests>=2.31.0"
+  ],
+  "version": "0.2.0"
 }

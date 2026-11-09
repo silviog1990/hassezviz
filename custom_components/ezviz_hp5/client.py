@@ -12,12 +12,15 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import threading
 import uuid
+from dataclasses import dataclass
+from typing import Any
 
 import requests
 from pyezvizapi.client import EzvizClient
 
-from .const import LOCK_NO_DOOR, LOCK_NO_GATE
+from .const import DEFAULT_CHANNEL_NO, LOCK_NO_DOOR, LOCK_NO_GATE
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -38,8 +41,8 @@ class EzvizCommandError(Exception):
     """Raised when an EZVIZ command (e.g. unlock) fails."""
 
 
-class EzvizHp5Client:
-    """Manages EZVIZ authentication and gate/door unlock commands for HP5."""
+class EzvizBaseClient:
+    """Manages the EZVIZ session shared by all supported devices."""
 
     def __init__(self, account: str, password: str, serial: str, api_url: str) -> None:
         self._account = account
@@ -50,6 +53,8 @@ class EzvizHp5Client:
         self._session_id: str | None = None
         self._user_id: str | None = None
         self._authenticated = False
+        # Serializes calls so parallel/rapid commands cannot race on re-login.
+        self._lock = threading.RLock()
 
     @property
     def authenticated(self) -> bool:
@@ -89,6 +94,28 @@ class EzvizHp5Client:
                 self._client = None
                 self._session_id = None
                 self._user_id = None
+
+    def _execute_with_retry(self, func, *args) -> Any:
+        """Execute a sync function with auto re-auth on failure."""
+        with self._lock:
+            if not self._authenticated:
+                self.login()
+
+            try:
+                return func(*args)
+            except Exception as first_error:
+                _LOGGER.warning("Command failed, re-authenticating: %s", first_error)
+                self.close()
+                try:
+                    self.login()
+                except EzvizAuthError as auth_error:
+                    raise EzvizAuthError(str(auth_error)) from first_error
+
+                return func(*args)
+
+
+class EzvizHp5Client(EzvizBaseClient):
+    """EZVIZ HP5 video intercom: gate/door unlock commands."""
 
     def _unlock(self, lock_no: int) -> bool:
         """Send unlock request matching EZVIZ app format."""
@@ -176,23 +203,6 @@ class EzvizHp5Client:
     #         return True
     #     raise EzvizCommandError(f"EZVIZ API error: code={meta_code} message={meta_msg}")
 
-    def _execute_with_retry(self, func, *args) -> bool:
-        """Execute a sync function with auto re-auth on failure."""
-        if not self._authenticated:
-            self.login()
-
-        try:
-            return func(*args)
-        except Exception as first_error:
-            _LOGGER.warning("Command failed, re-authenticating: %s", first_error)
-            self.close()
-            try:
-                self.login()
-            except EzvizAuthError as auth_error:
-                raise EzvizAuthError(str(auth_error)) from first_error
-
-            return func(*args)
-
     def gate_unlock(self) -> bool:
         """Unlock (open) the gate (lockNo=1)."""
         return self._execute_with_retry(self._unlock, LOCK_NO_GATE)
@@ -200,3 +210,70 @@ class EzvizHp5Client:
     def door_unlock(self) -> bool:
         """Unlock (open) the door (lockNo=2)."""
         return self._execute_with_retry(self._unlock, LOCK_NO_DOOR)
+
+
+@dataclass(frozen=True)
+class Preset:
+    """A saved camera position (index >= 1, unique per camera)."""
+
+    index: int
+    name: str
+
+
+class EzvizCameraClient(EzvizBaseClient):
+    """EZVIZ PTZ camera: list presets and move the camera to one of them."""
+
+    def _post_form(self, path: str, extra_fields: dict[str, Any]) -> dict[str, Any]:
+        """POST a form-encoded request in the EZVIZ app's format."""
+        if not self._session_id:
+            raise EzvizCommandError("Not authenticated")
+
+        fields = {
+            "sessionId": self._session_id,
+            "subSerial": self._serial,
+            "channelNo": DEFAULT_CHANNEL_NO,
+            "featureCode": FEATURE_CODE,
+            "clientType": 1,
+            "clientVersion": "7.6.7.2915967",
+            "customno": "1000001",
+            "netType": "WIFI",
+            "osVersion": "17.0",
+            "clientNo": "",
+            **extra_fields,
+        }
+        url = f"https://{self._api_url}{path}"
+        try:
+            resp = requests.post(url, data=fields, timeout=15)
+            body = resp.json()
+        except (requests.RequestException, ValueError) as err:
+            raise EzvizCommandError(f"EZVIZ request failed: {err}") from err
+
+        code = str(body.get("resultCode"))
+        if code != "0":
+            msg = body.get("resultDes", "")
+            _LOGGER.warning("EZVIZ request %s failed: code=%s %s", path, code, msg)
+            raise EzvizCommandError(f"EZVIZ API error: code={code} message={msg}")
+        return body
+
+    def _list_presets(self) -> list[Preset]:
+        body = self._post_form("/api/device/preset/list", {})
+        return [
+            Preset(index=int(item["index"]), name=str(item.get("name", "")))
+            for item in body.get("data") or []
+        ]
+
+    def _goto_preset(self, index: int) -> bool:
+        _LOGGER.debug("Moving camera %s to preset %d", self._serial, index)
+        self._post_form(
+            "/api/device/preset/config",
+            {"configPreset": "GOTO_PRESET", "index": index},
+        )
+        return True
+
+    def list_presets(self) -> list[Preset]:
+        """Return the presets defined on the camera."""
+        return self._execute_with_retry(self._list_presets)
+
+    def goto_preset(self, index: int) -> bool:
+        """Move the camera to the preset with the given index."""
+        return self._execute_with_retry(self._goto_preset, index)
